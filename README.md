@@ -1,142 +1,117 @@
-# 📦 Data Preprocessing for LLMs — Input-Output Pair Generation
+# Data Preprocessing for LLMs
 
-This project demonstrates how to preprocess raw text into training-ready batches for a large language model. The notebook (`I-0-PAIR.ipynb`) walks through the complete pipeline: **tokenizing text → creating input/target pairs → wrapping them in a PyTorch Dataset → loading batches with a DataLoader**.
+End-to-end data preprocessing pipeline for training a GPT-style language model — from raw text to training-ready batches. Covers tokenization (both from scratch and using BPE) and input-output pair generation with PyTorch.
 
-It uses the **GPT-2 BPE tokenizer** (via `tiktoken`) and a short story (`the-verdict.txt`) as the input text.
-
----
-
-## 🎯 Purpose
-
-LLMs learn by predicting the **next token**. To train one, you need pairs of sequences where the **target is the input shifted by one position**:
-
-```
-Input :  [token_0, token_1, token_2, token_3]
-Target:  [token_1, token_2, token_3, token_4]
-```
-
-This notebook shows how to build those pairs from scratch and serve them as batches, exactly the way a real training loop would consume them.
+Based on *Build a Large Language Model (From Scratch)* by Sebastian Raschka.
 
 ---
 
-## 🔄 Workflow
+## Project Structure
 
 ```
-Raw Text  →  BPE Tokenization (tiktoken, GPT-2)
-                    ↓
-          List of Token IDs
-                    ↓
-     Sliding Window → Input/Target Pairs
-                    ↓
-        Custom PyTorch Dataset (DatasetV1)
-                    ↓
-           DataLoader → Batches
-```
-
----
-
-## 📂 Project Structure
-
-```text
 DATA-PREPROCESSING-LLM/
-├── I-0-PAIR.ipynb        # Main notebook (input-output pair generation)
-├── TOKENIZER-.ipynb      # Tokenizer exploration notebook
-├── TOKENIZER.ipynb       # Tokenizer notebook
-├── the-verdict.txt       # Source text ("The Verdict" by Edith Wharton)
+├── TOKENIZER-.ipynb      # Word-level tokenizer built from scratch
+├── TOKENIZER.ipynb       # BPE tokenizer using tiktoken (GPT-2)
+├── I-0-PAIR.ipynb        # Input-output pair generation + DataLoader
+├── the-verdict.txt       # Source text (Edith Wharton's "The Verdict")
 ├── verdit-dataset.zip    # Zipped dataset archive
 └── README.md
 ```
 
 ---
 
-## 📓 What the Notebook Does (Step by Step)
+## Notebooks
 
-### 1. Install Dependencies
-Installs `tiktoken`, `datasets`, and `torch`.
+### 1. `TOKENIZER-.ipynb` — Word-Level Tokenizer from Scratch
 
-### 2. Initialize the Tokenizer
-```python
-import tiktoken
-tokenizer = tiktoken.get_encoding("gpt2")
-```
-Loads the GPT-2 BPE tokenizer from `tiktoken`.
+Builds a complete tokenizer without any external tokenizer library.
 
-### 3. Load & Preview the Text
-Reads `the-verdict.txt` (20,479 characters) and prints the first ~1,000 characters.
-
-### 4. Tokenize the Text
-```python
-encoded_text = tokenizer.encode(raw_text)  # → 5,145 token IDs
-```
-
-### 5. Demonstrate Input → Target Pairing
-With a `context_size` of 4, shows how each input window maps to a target window shifted by one token — both as raw token IDs and decoded text:
-
-```
- and           → established
- and established → himself
- and established himself → in
- and established himself in → a
-```
-
-### 6. Define `DatasetV1` (Custom PyTorch Dataset)
-A class that:
-- Tokenizes the text (with `<|endoftext|>` support).
-- Uses a **sliding window** with configurable `context_length` and `stride` to generate all input/target pairs.
-- Returns `(input_tensor, target_tensor)` for each sample.
-
-### 7. Define `create_dataloader` Helper
-Wraps `DatasetV1` and `torch.utils.data.DataLoader` into a single function with sensible defaults:
-| Parameter        | Default |
-|------------------|---------|
-| `batch_size`     | 4       |
-| `context_length` | 256     |
-| `stride`         | 128     |
-| `shuffle`        | True    |
-| `drop_last`      | True    |
-| `num_workers`    | 0       |
-
-### 8. Create a DataLoader and Print Batches
-Creates a DataLoader (`batch_size=4`, `context_length=4`, `stride=4`, `shuffle=False`) and prints the first **2 batches**:
-
-```
-Batch 1
-Input : tensor([[   40,   367,  2885,  1464],
-        [ 1807,  3619,   402,   271],
-        [10899,  2138,   257,  7026],
-        [15632,   438,  2016,   257]])
-Target: tensor([[  367,  2885,  1464,  1807],
-        [ 3619,   402,   271, 10899],
-        [ 2138,   257,  7026, 15632],
-        [  438,  2016,   257,   922]])
-```
-
-Each row in the target is the corresponding input row **shifted by one token** — this is the next-token prediction format used by GPT-style models.
+**Steps:**
+1. Load the **WikiText-103** dataset from Hugging Face (~540M characters).
+2. Split text into tokens using **regex** (handles punctuation, special characters, whitespace).
+3. Build a **vocabulary** — sorted unique tokens mapped to integer IDs (608,557 unique tokens).
+4. Implement `SimpleTokenizer` class with `encoder()` and `decoder()` methods.
+5. Add special tokens (`<|endoftext|>`, `<|unk|>`) to handle document boundaries and unknown words.
+6. Implement `SimpleTokenizerV2` — improved version that maps unknown words to `<|unk|>` instead of crashing, and cleans up punctuation spacing on decode.
+7. Demonstrate encoding and decoding with multi-document text joined by `<|endoftext|>`.
 
 ---
 
-## 🚀 Getting Started
+### 2. `TOKENIZER.ipynb` — BPE Tokenizer (tiktoken)
 
-### Prerequisites
-- Python 3.10+
-- Jupyter Notebook
+Uses OpenAI's `tiktoken` library with the **GPT-2 BPE encoding** to tokenize text at the subword level.
 
-### Installation
+**Steps:**
+1. Load the GPT-2 tokenizer via `tiktoken.get_encoding("gpt2")`.
+2. Encode a sample paragraph (including punctuation, numbers, newlines, and `<|endoftext|>`) into token IDs.
+3. Decode token IDs back to the original text.
+4. Inspect each token individually — prints every `(token_id, decoded_string)` pair to show how BPE splits words like `"uppercase"` → `["u", "pperc", "ase"]`.
+
+---
+
+### 3. `I-0-PAIR.ipynb` — Input-Output Pair Generation & DataLoader
+
+Converts tokenized text into **next-token prediction pairs** and serves them as batches via PyTorch — the format required for training a GPT-style model.
+
+**Workflow:**
+
+```
+Raw Text (the-verdict.txt)
+        ↓
+BPE Tokenization (tiktoken, GPT-2) → 5,145 token IDs
+        ↓
+Sliding Window → Input/Target Pairs
+        ↓
+PyTorch Dataset (DatasetV1)
+        ↓
+DataLoader → Batches
+```
+
+**Steps:**
+1. Read `the-verdict.txt` and tokenize it with `tiktoken` (5,145 tokens).
+2. Demonstrate the **next-token prediction** concept:
+   ```
+    and           →  established
+    and established →  himself
+    and established himself →  in
+    and established himself in →  a
+   ```
+3. Define `DatasetV1` — a custom `torch.utils.data.Dataset` that uses a **sliding window** (configurable `context_length` and `stride`) to generate all `(input, target)` tensor pairs.
+4. Define `create_dataloader()` — wraps `DatasetV1` + `DataLoader` with defaults: `batch_size=4`, `context_length=256`, `stride=128`, `shuffle=True`, `drop_last=True`.
+5. Create a DataLoader and iterate through the first 2 batches:
+   ```
+   Batch 1
+   Input : tensor([[   40,   367,  2885,  1464],
+           [ 1807,  3619,   402,   271],
+           [10899,  2138,   257,  7026],
+           [15632,   438,  2016,   257]])
+   Target: tensor([[  367,  2885,  1464,  1807],
+           [ 3619,   402,   271, 10899],
+           [ 2138,   257,  7026, 15632],
+           [  438,  2016,   257,   922]])
+   ```
+   Each target row is the corresponding input row shifted by one token.
+
+---
+
+## Getting Started
+
+**Requirements:** Python 3.10+, Jupyter Notebook
 
 ```bash
-git clone https://github.com/Rhythem2005/DATA-PREPROCESSING-LLM.git
-cd DATA-PREPROCESSING-LLM
+git clone https://github.com/Rhythem2005/LLM-TOKENIZER.git
+cd LLM-TOKENIZER
 pip install tiktoken datasets torch
-jupyter notebook I-0-PAIR.ipynb
+jupyter notebook
 ```
 
-Run all cells from top to bottom.
+Run cells top to bottom in each notebook.
 
 ---
 
-## 📚 References
+## References
 
 - *Build a Large Language Model (From Scratch)* — Sebastian Raschka
-- [tiktoken (OpenAI)](https://github.com/openai/tiktoken)
+- [tiktoken](https://github.com/openai/tiktoken)
 - [Hugging Face Datasets](https://huggingface.co/docs/datasets)
-- [PyTorch DataLoader](https://pytorch.org/docs/stable/data.html)
+- [PyTorch Data Utilities](https://pytorch.org/docs/stable/data.html)

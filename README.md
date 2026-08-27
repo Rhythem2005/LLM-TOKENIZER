@@ -2,8 +2,6 @@
 
 End-to-end data preprocessing pipeline for training a GPT-style language model — from raw text to training-ready batches. Covers tokenization (both from scratch and using BPE) and input-output pair generation with PyTorch.
 
-Based on *Build a Large Language Model (From Scratch)* by Sebastian Raschka.
-
 ---
 
 ## Project Structure
